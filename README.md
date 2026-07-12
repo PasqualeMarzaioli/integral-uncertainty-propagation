@@ -26,28 +26,15 @@ Agreement among the three methods supports the use of cheaper LinCov or UT predi
 
 The spacecraft state in an Earth-centred inertial (ECI) frame aligned with J2000 is
 
-$$
-\mathbf{x} =
-\begin{bmatrix}
-\mathbf{r} \\
-\mathbf{v}
-\end{bmatrix}
-\in \mathbb{R}^{6},
-$$
+$$\mathbf{x} = \begin{bmatrix} \mathbf{r} \\ \mathbf{v} \end{bmatrix} \in \mathbb{R}^{6},$$
 
 with position $\mathbf{r}$ in $\mathrm{km}$ and velocity $\mathbf{v}$ in $\mathrm{km}/\mathrm{s}$. Point-mass Earth gravity with gravitational parameter
 
-$$
-\mu = 398600.4418\,\mathrm{km}^{3}/\mathrm{s}^{2}
-$$
+$$\mu = 398600.4418\,\mathrm{km}^{3}/\mathrm{s}^{2}$$
 
 gives the first-order system
 
-$$
-\dot{\mathbf{r}} = \mathbf{v},
-\qquad
-\dot{\mathbf{v}} = -\mu\,\frac{\mathbf{r}}{\|\mathbf{r}\|^{3}}.
-$$
+$$\dot{\mathbf{r}} = \mathbf{v}, \qquad \dot{\mathbf{v}} = -\mu\,\frac{\mathbf{r}}{\|\mathbf{r}\|^{3}}.$$
 
 No $J_{2}$, drag, or third-body accelerations are included: the study isolates the effect of the Keplerian nonlinearity on uncertainty transport.
 
@@ -55,9 +42,7 @@ No $J_{2}$, drag, or third-body accelerations are included: the study isolates t
 
 The specific orbital energy
 
-$$
-\varepsilon = \frac{\|\mathbf{v}\|^{2}}{2} - \frac{\mu}{\|\mathbf{r}\|}
-$$
+$$\varepsilon = \frac{\|\mathbf{v}\|^{2}}{2} - \frac{\mu}{\|\mathbf{r}\|}$$
 
 is constant along each exact Keplerian trajectory. The integrator is required to conserve $\varepsilon$ to a relative tolerance of $10^{-10}$ at every detected apsis (see §8).
 
@@ -65,21 +50,15 @@ is constant along each exact Keplerian trajectory. The integrator is required to
 
 From the initial state one obtains the semimajor axis
 
-$$
-a = \left(\frac{2}{\|\mathbf{r}_{0}\|} - \frac{\|\mathbf{v}_{0}\|^{2}}{\mu}\right)^{-1}
-$$
+$$a = \left(\frac{2}{\|\mathbf{r}_{0}\|} - \frac{\|\mathbf{v}_{0}\|^{2}}{\mu}\right)^{-1}$$
 
 and the Keplerian period
 
-$$
-T = 2\pi\sqrt{\frac{a^{3}}{\mu}}.
-$$
+$$T = 2\pi\sqrt{\frac{a^{3}}{\mu}}.$$
 
 For the INTEGRAL initial conditions used here,
 
-$$
-T = 227964.078\,\mathrm{s} \approx 63.323\,\mathrm{h}.
-$$
+$$T = 227964.078\,\mathrm{s} \approx 63.323\,\mathrm{h}.$$
 
 ---
 
@@ -87,16 +66,11 @@ $$
 
 An apsis is a turning point of the radial distance, equivalently a root of the radial-rate condition
 
-$$
-\mathbf{r}\cdot\mathbf{v} = 0.
-$$
+$$\mathbf{r}\cdot\mathbf{v} = 0.$$
 
 This condition is registered as an `ode113` event while integrating the nominal trajectory over a horizon slightly longer than five periods. Events occurring at the supplied initial apocentre ($t\approx 0$) are discarded. Remaining roots are classified by the sign of
 
-$$
-\frac{\mathrm{d}}{\mathrm{d}t}(\mathbf{r}\cdot\mathbf{v})
-= \|\mathbf{v}\|^{2} - \frac{\mu}{\|\mathbf{r}\|}:
-$$
+$$\frac{\mathrm{d}}{\mathrm{d}t}(\mathbf{r}\cdot\mathbf{v}) = \|\mathbf{v}\|^{2} - \frac{\mu}{\|\mathbf{r}\|}:$$
 
 - positive $\Rightarrow$ **pericentre** (radial distance increasing after the root),
 - negative $\Rightarrow$ **apocentre**.
@@ -109,9 +83,7 @@ The first five events of each type become the analysis epochs. Their Cartesian s
 
 The initial estimate is Gaussian,
 
-$$
-\mathbf{x}_{0} \sim \mathcal{N}(\bar{\mathbf{x}}_{0},\, P_{0}),
-$$
+$$\mathbf{x}_{0} \sim \mathcal{N}(\bar{\mathbf{x}}_{0},\, P_{0}),$$
 
 with $\bar{\mathbf{x}}_{0}$ and $P_{0}$ given in §7. Three mappings to a later time $t$ are computed independently.
 
@@ -119,37 +91,17 @@ with $\bar{\mathbf{x}}_{0}$ and $P_{0}$ given in §7. Three mappings to a later 
 
 Let $\boldsymbol{\Phi}(t,t_{0})$ be the state-transition matrix (STM) of the variational equation about the nominal trajectory. Writing $\Phi(t)=\Phi(t,t_{0})$ for brevity,
 
-$$
-\dot{\Phi} = A(t)\,\Phi,
-\qquad
-\Phi(t_{0}) = I_{6},
-$$
+$$\dot{\Phi} = A(t)\,\Phi, \qquad \Phi(t_{0}) = I_{6},$$
 
 where the $6\times 6$ Jacobian of the two-body vector field is
 
-$$
-A =
-\begin{bmatrix}
-0_{3\times 3} & I_{3} \\
-G(\mathbf{r}) & 0_{3\times 3}
-\end{bmatrix},
-\qquad
-G(\mathbf{r})
-=
-\mu\left(
-\frac{3\,\mathbf{r}\mathbf{r}^{\top}}{\|\mathbf{r}\|^{5}}
--
-\frac{I_{3}}{\|\mathbf{r}\|^{3}}
-\right).
-$$
+$$A = \begin{bmatrix} 0_{3\times 3} & I_{3} \\ G(\mathbf{r}) & 0_{3\times 3} \end{bmatrix},$$
+
+$$G(\mathbf{r}) = \mu\left(\frac{3\,\mathbf{r}\mathbf{r}^{\top}}{\|\mathbf{r}\|^{5}} - \frac{I_{3}}{\|\mathbf{r}\|^{3}}\right).$$
 
 The matrix $G$ is the gravity-gradient (tidal) tensor of the central force. Propagating the augmented state $[\mathbf{x};\,\mathrm{vec}(\Phi)]$ with the same integrator yields $\Phi$ at every apsis. Under the linear map,
 
-$$
-P_{\mathrm{Lin}}(t) = \Phi(t)\, P_{0}\, \Phi(t)^{\top},
-\qquad
-\bar{\mathbf{x}}_{\mathrm{Lin}}(t) = \mathbf{x}_{\mathrm{nom}}(t).
-$$
+$$P_{\mathrm{Lin}}(t) = \Phi(t)\, P_{0}\, \Phi(t)^{\top}, \qquad \bar{\mathbf{x}}_{\mathrm{Lin}}(t) = \mathbf{x}_{\mathrm{nom}}(t).$$
 
 LinCov is exact only for linear dynamics; here it is the first-order approximation of the nonlinear flow.
 
@@ -157,36 +109,17 @@ LinCov is exact only for linear dynamics; here it is the first-order approximati
 
 The scaled Julier–Uhlmann sigma-point set for dimension $n=6$ uses
 
-$$
-\lambda = \alpha^{2}(n+\kappa)-n,
-\qquad
-\alpha=0.1,\;\beta=2,\;\kappa=0.
-$$
+$$\lambda = \alpha^{2}(n+\kappa)-n, \qquad \alpha=0.1,\;\beta=2,\;\kappa=0.$$
 
 With $S$ the lower Cholesky factor of $(n+\lambda)P_{0}$, the $2n+1=13$ sigma points are
 
-$$
-\boldsymbol{\mathcal{X}}^{(0)} = \bar{\mathbf{x}}_{0},
-\qquad
-\boldsymbol{\mathcal{X}}^{(i)} = \bar{\mathbf{x}}_{0} + \mathbf{s}_{i},
-\qquad
-\boldsymbol{\mathcal{X}}^{(i+n)} = \bar{\mathbf{x}}_{0} - \mathbf{s}_{i},
-\quad i=1,\ldots,n,
-$$
+$$\boldsymbol{\mathcal{X}}^{(0)} = \bar{\mathbf{x}}_{0}, \qquad \boldsymbol{\mathcal{X}}^{(i)} = \bar{\mathbf{x}}_{0} + \mathbf{s}_{i}, \qquad \boldsymbol{\mathcal{X}}^{(i+n)} = \bar{\mathbf{x}}_{0} - \mathbf{s}_{i}, \quad i=1,\ldots,n,$$
 
 where $\mathbf{s}_{i}$ denotes the $i$-th column of $S$. Each point is integrated nonlinearly to time $t$. The predicted mean and covariance are the weighted statistics
 
-$$
-\bar{\mathbf{x}}_{\mathrm{UT}}
-=
-\sum_{i=0}^{2n} w_{i}^{(m)}\,\boldsymbol{\mathcal{Y}}^{(i)},
-\qquad
-P_{\mathrm{UT}}
-=
-\sum_{i=0}^{2n} w_{i}^{(c)}
-\bigl(\boldsymbol{\mathcal{Y}}^{(i)}-\bar{\mathbf{x}}_{\mathrm{UT}}\bigr)
-\bigl(\boldsymbol{\mathcal{Y}}^{(i)}-\bar{\mathbf{x}}_{\mathrm{UT}}\bigr)^{\top},
-$$
+$$\bar{\mathbf{x}}_{\mathrm{UT}} = \sum_{i=0}^{2n} w_{i}^{(m)}\,\boldsymbol{\mathcal{Y}}^{(i)},$$
+
+$$P_{\mathrm{UT}} = \sum_{i=0}^{2n} w_{i}^{(c)}\bigl(\boldsymbol{\mathcal{Y}}^{(i)}-\bar{\mathbf{x}}_{\mathrm{UT}}\bigr)\bigl(\boldsymbol{\mathcal{Y}}^{(i)}-\bar{\mathbf{x}}_{\mathrm{UT}}\bigr)^{\top},$$
 
 with the standard scaled mean and covariance weights $w_{i}^{(m)}$, $w_{i}^{(c)}$. The UT captures mean and covariance through third-order terms for Gaussian inputs under smooth nonlinearities, at the cost of only $13$ trajectories instead of thousands.
 
@@ -194,21 +127,13 @@ with the standard scaled mean and covariance weights $w_{i}^{(m)}$, $w_{i}^{(c)}
 
 Draw $N_{\mathrm{MC}}=2000$ independent samples
 
-$$
-\mathbf{x}_{0}^{(k)} = \bar{\mathbf{x}}_{0} + L\,\boldsymbol{\xi}^{(k)},
-\qquad
-\boldsymbol{\xi}^{(k)}\sim\mathcal{N}(\mathbf{0},I_{6}),
-$$
+$$\mathbf{x}_{0}^{(k)} = \bar{\mathbf{x}}_{0} + L\,\boldsymbol{\xi}^{(k)}, \qquad \boldsymbol{\xi}^{(k)}\sim\mathcal{N}(\mathbf{0},I_{6}),$$
 
 where $L$ is the lower Cholesky factor of $P_{0}$ and the generator is seeded with $42$ for reproducibility. Propagate each sample to every apsis time. The sample mean and unbiased sample covariance define $P_{\mathrm{MC}}$ and $\bar{\mathbf{x}}_{\mathrm{MC}}$.
 
 **Convergence criterion.** At the last pericentre and last apocentre, form the cumulative mean $\bar{\mathbf{x}}_{N}$ for $N=1,\ldots,N_{\mathrm{MC}}$. Let $\sigma_{j}$ be the full-sample standard deviation of component $j$. Convergence is declared at the smallest $N_{\min}$ such that, for every later index, the maximum absolute component-wise deviation from the final mean stays within $0.05\,\sigma_{j}$ simultaneously for both apsides. The run reported here yields
 
-$$
-N_{\min} = 834
-\quad\text{at}\quad
-0.050\,\sigma.
-$$
+$$N_{\min} = 834 \quad\text{at}\quad 0.050\,\sigma.$$
 
 ---
 
@@ -216,21 +141,11 @@ $$
 
 At a reference state $(\mathbf{r},\mathbf{v})$ the local orbit triad is
 
-$$
-\hat{\mathbf{r}} = \frac{\mathbf{r}}{\|\mathbf{r}\|},
-\qquad
-\hat{\mathbf{h}} = \frac{\mathbf{r}\times\mathbf{v}}{\|\mathbf{r}\times\mathbf{v}\|},
-\qquad
-\hat{\mathbf{t}} = \hat{\mathbf{h}}\times\hat{\mathbf{r}}.
-$$
+$$\hat{\mathbf{r}} = \frac{\mathbf{r}}{\|\mathbf{r}\|}, \qquad \hat{\mathbf{h}} = \frac{\mathbf{r}\times\mathbf{v}}{\|\mathbf{r}\times\mathbf{v}\|}, \qquad \hat{\mathbf{t}} = \hat{\mathbf{h}}\times\hat{\mathbf{r}}.$$
 
 The $3\times 3$ rotation $R$ with rows $[\hat{\mathbf{r}}^{\top};\,\hat{\mathbf{t}}^{\top};\,\hat{\mathbf{h}}^{\top}]$ maps ECI vector components into radial, transverse (along-track), and normal (cross-track) components. Position and velocity blocks transform together through
 
-$$
-T = \mathrm{blkdiag}(R,R),
-\qquad
-P_{\mathrm{RTH}} = T\, P_{\mathrm{ECI}}\, T^{\top}.
-$$
+$$T = \mathrm{blkdiag}(R,R), \qquad P_{\mathrm{RTH}} = T\, P_{\mathrm{ECI}}\, T^{\top}.$$
 
 Mean differences (for example $\bar{\mathbf{x}}_{\mathrm{UT}}-\bar{\mathbf{x}}_{\mathrm{Lin}}$) are rotated by the same $T$. Working in RTH separates radial stretching from along-track phase error and out-of-plane tilt—coordinates natural for orbit analysis.
 
@@ -240,11 +155,7 @@ Mean differences (for example $\bar{\mathbf{x}}_{\mathrm{UT}}-\bar{\mathbf{x}}_{
 
 All trajectories use MATLAB’s variable-order Adams–Bashforth–Moulton solver `ode113` with
 
-$$
-\mathrm{RelTol} = 10^{-12},
-\qquad
-\mathrm{AbsTol} = 10^{-13}.
-$$
+$$\mathrm{RelTol} = 10^{-12}, \qquad \mathrm{AbsTol} = 10^{-13}.$$
 
 The same options apply to the variational (STM) integration and to every sigma-point or Monte Carlo sample, so differences among methods arise from the uncertainty representation rather than from inconsistent numerics.
 
@@ -263,33 +174,11 @@ The same options apply to the variational (STM) integration and to every sigma-p
 
 Initial mean (position in $\mathrm{km}$, velocity in $\mathrm{km}/\mathrm{s}$):
 
-$$
-\bar{\mathbf{x}}_{0}
-=
-\begin{bmatrix}
-7896.37847595 \\
--3152.23575783 \\
-149961.25963557 \\
--0.6035374932 \\
-0.0159618300 \\
-0.0321154658
-\end{bmatrix}.
-$$
+$$\bar{\mathbf{x}}_{0} = \begin{bmatrix} 7896.37847595 & -3152.23575783 & 149961.25963557 & -0.6035374932 & 0.0159618300 & 0.0321154658 \end{bmatrix}^{\top}.$$
 
 Initial covariance (position block in $\mathrm{km}^{2}$, velocity block in $(\mathrm{km}/\mathrm{s})^{2}$; zero position–velocity cross-covariance):
 
-$$
-P_{0}
-=
-\begin{bmatrix}
-6.7\times 10^{-3} & -2.1\times 10^{-3} & 7.6\times 10^{-4} & 0 & 0 & 0 \\
--2.1\times 10^{-3} & 9.7\times 10^{-3} & 5.3\times 10^{-4} & 0 & 0 & 0 \\
-7.6\times 10^{-4} & 5.3\times 10^{-4} & 2.1\times 10^{-3} & 0 & 0 & 0 \\
-0 & 0 & 0 & 4.7\times 10^{-7} & 0 & 0 \\
-0 & 0 & 0 & 0 & 3.1\times 10^{-7} & 0 \\
-0 & 0 & 0 & 0 & 0 & 1.6\times 10^{-7}
-\end{bmatrix}.
-$$
+$$P_{0} = \begin{bmatrix} 6.7\times 10^{-3} & -2.1\times 10^{-3} & 7.6\times 10^{-4} & 0 & 0 & 0 \\ -2.1\times 10^{-3} & 9.7\times 10^{-3} & 5.3\times 10^{-4} & 0 & 0 & 0 \\ 7.6\times 10^{-4} & 5.3\times 10^{-4} & 2.1\times 10^{-3} & 0 & 0 & 0 \\ 0 & 0 & 0 & 4.7\times 10^{-7} & 0 & 0 \\ 0 & 0 & 0 & 0 & 3.1\times 10^{-7} & 0 \\ 0 & 0 & 0 & 0 & 0 & 1.6\times 10^{-7} \end{bmatrix}.$$
 
 The mean state lies near apocentre: $\|\mathbf{r}_{0}\|\approx 1.502\times 10^{5}\,\mathrm{km}$.
 
