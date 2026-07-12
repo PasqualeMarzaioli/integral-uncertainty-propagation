@@ -1,0 +1,13 @@
+# Bundled SPICE/MICE toolkit (unused by the main script)
+mice/
+
+# MATLAB / Octave autosaves
+*.asv
+*.m~
+octave-workspace
+
+# OS junk
+.DS_Store
+
+# Local run capture
+run_output.log
