@@ -102,7 +102,7 @@ Successive pericentre (respectively apocentre) times are spaced by one Keplerian
 Three independent representations of the mapped uncertainty were evaluated at every detected apsis:
 
 1. **LinCov** — linearized covariance via the state-transition matrix $\Phi(t)$ integrated with the variational equations.
-2. **Unscented Transform (UT)** — $2n+1 = 13$ scaled sigma points propagated nonlinearly and recombined with Julier–Uhlmann weights.
+2. **Unscented Transform (UT)** — $2n+1 = 13$ scaled sigma points propagated nonlinearly and recombined with deterministic weights.
 3. **Monte Carlo** — $2000$ independent samples drawn from $\mathcal{N}(\bar{\mathbf{x}}_0, P_0)$ and integrated with the same two-body dynamics.
 
 After propagation, means and covariances were rotated into the local radial–transverse–normal (RTH) frame attached to each nominal apsis state. All methods are evaluated at the fixed nominal event times; sigma points and Monte Carlo samples do not use sample-specific apsis events.

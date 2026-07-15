@@ -115,7 +115,7 @@ LinCov is exact only for linear dynamics; here it is the first-order approximati
 
 ### 4.2 Unscented transform (UT)
 
-The scaled Julier–Uhlmann sigma-point set for dimension $n=6$ uses
+The scaled sigma-point set for dimension $n=6$ uses
 
 $$\lambda = \alpha^{2}(n+\kappa)-n, \qquad \alpha=0.1,\;\beta=2,\;\kappa=0.$$
 
@@ -233,7 +233,7 @@ matlab -batch "integral_uncertainty_propagation"
 
 With `saveFigures = true` (default), ten PNG files are written to `plots/` at $300\,\mathrm{dpi}$. Runtime is dominated by the $2000$ Monte Carlo integrations (typically a few minutes).
 
-The entry script [`integral_uncertainty_propagation.m`](integral_uncertainty_propagation.m) is self-contained; its helpers are local functions in the same file.
+The entry script [`integral_uncertainty_propagation.m`](integral_uncertainty_propagation.m) adds [`functions/`](functions/) relative to its own location, then calls the standalone modular helpers stored there.
 
 ---
 
@@ -318,26 +318,10 @@ The largest $3\sigma$ principal axes of the position and velocity covariance blo
 
 ```text
 integral_uncertainty_propagation/
-├── integral_uncertainty_propagation.m   # Main script (self-contained)
+├── integral_uncertainty_propagation.m   # Main orchestration script
+├── functions/                           # Modular MATLAB helpers
 ├── plots/                               # Generated PNG figures
 ├── results.md                           # Tabulated numerical results
 ├── README.md                            # This document
-├── LICENSE                              # MIT license
 └── .gitignore                           # Local MATLAB and OS artifacts
 ```
-
----
-
-## 12. References
-
-- S. J. Julier and J. K. Uhlmann, “Unscented Filtering and Nonlinear Estimation,” *Proceedings of the IEEE*, 92(3), 401–422, 2004. [doi:10.1109/JPROC.2003.823141](https://doi.org/10.1109/JPROC.2003.823141)
-- S. J. Julier, “The Scaled Unscented Transformation,” *Proceedings of the American Control Conference*, 4555–4559, 2002. [doi:10.1109/ACC.2002.1025369](https://doi.org/10.1109/ACC.2002.1025369)
-- [IERS Conventions (2010), Technical Note 36](https://www.iers.org/IERS/EN/Publications/TechnicalNotes/tn36.html) for the conventional Earth gravitational parameter.
-- [MATLAB `ode113` documentation](https://www.mathworks.com/help/matlab/ref/ode113.html) for the variable-step, variable-order Adams–Bashforth–Moulton implementation.
-- [ESA INTEGRAL overview](https://www.esa.int/Science_Exploration/Space_Science/Integral/Integral_overview) for mission and orbit context; the supplied benchmark state is not asserted to reproduce an ESA operational ephemeris.
-
----
-
-## 13. License and author
-
-Copyright © 2026 Pasquale Marzaioli. Released under the [MIT License](LICENSE).
