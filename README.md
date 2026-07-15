@@ -2,21 +2,23 @@
 
 **Author:** Pasquale Marzaioli
 
-Comparison of linearized covariance (LinCov), the unscented transform (UT), and Monte Carlo sampling for propagating the state uncertainty of ESA’s INTEGRAL spacecraft under two-body Earth gravity. Uncertainties are mapped over five orbital revolutions, evaluated at successive pericentres and apocentres, and expressed in the local radial–transverse–normal (RTH) frame.
+Comparison of linearized covariance (LinCov), the scaled unscented transform (UT), and Monte Carlo sampling for an INTEGRAL-inspired uncertainty-propagation benchmark under two-body Earth gravity. Uncertainties are mapped over five orbital revolutions, evaluated at fixed nominal pericentre and apocentre epochs, and expressed in the local radial–transverse–normal (RTH) frame.
 
-Full tabulated console output from a verified run is collected in [`results.md`](results.md). Figures are stored in [`plots/`](plots/).
+This is a numerical-method benchmark, not an operational orbit prediction. The repository does not contain provenance for the supplied state and covariance, so they must be treated as illustrative inputs rather than a documented flight orbit-determination solution.
+
+Audited numerical tables and diagnostics from a verified run are collected in [`results.md`](results.md). Figures are stored in [`plots/`](plots/).
 
 ---
 
 ## 1. Motivation
 
-Orbit determination and prediction require not only a nominal trajectory but also a faithful representation of how initial uncertainty evolves under the dynamics. For near-circular low Earth orbits a linear (Gaussian) mapping through the state-transition matrix is often adequate. INTEGRAL flies a highly eccentric orbit: the radial distance ranges from roughly $1.1\times 10^{4}\,\mathrm{km}$ at pericentre to $1.5\times 10^{5}\,\mathrm{km}$ at apocentre. Over such an arc the gravitational acceleration varies by more than two orders of magnitude, and second-order effects in the flow map can accumulate.
+Orbit determination and prediction require not only a nominal trajectory but also a faithful representation of how initial uncertainty evolves under the dynamics. For near-circular low Earth orbits a linear mapping through the state-transition matrix is often adequate. This benchmark is highly eccentric: the radial distance ranges from roughly $1.1\times 10^{4}\,\mathrm{km}$ at pericentre to $1.5\times 10^{5}\,\mathrm{km}$ at apocentre. Over such an arc the gravitational acceleration varies by more than two orders of magnitude, and nonlinear effects in the flow map accumulate.
 
 This repository therefore asks a concrete question:
 
 > Given a six-dimensional Gaussian initial uncertainty at a known apocentre epoch, how do linearized covariance propagation, a deterministic sigma-point (unscented) transform, and a large Monte Carlo ensemble compare when the uncertainty is transported to the next five pericentres and apocentres?
 
-Agreement among the three methods supports the use of cheaper LinCov or UT predictors in related navigation filters; systematic discrepancies highlight where nonlinearity matters.
+Monte Carlo is a finite-sample numerical reference here, not ground truth. Large, systematic discrepancies identify nonlinear effects; small differences must be interpreted against Monte Carlo sampling error.
 
 ---
 
@@ -24,7 +26,7 @@ Agreement among the three methods supports the use of cheaper LinCov or UT predi
 
 ### 2.1 Two-body dynamics
 
-The spacecraft state in an Earth-centred inertial (ECI) frame aligned with J2000 is
+The state is expressed in an Earth-centred inertial (ECI) Cartesian frame. The source orientation of the supplied components is not documented. Because this isotropic two-body benchmark is rotationally invariant, that missing orientation does not affect the scalar diagnostics or the local RTH histories.
 
 $$\mathbf{x} = \begin{bmatrix} \mathbf{r} \\ \mathbf{v} \end{bmatrix} \in \mathbb{R}^{6},$$
 
@@ -36,7 +38,7 @@ gives the first-order system
 
 $$\dot{\mathbf{r}} = \mathbf{v}, \qquad \dot{\mathbf{v}} = -\mu\,\frac{\mathbf{r}}{\|\mathbf{r}\|^{3}}.$$
 
-No $J_{2}$, drag, or third-body accelerations are included: the study isolates the effect of the Keplerian nonlinearity on uncertainty transport.
+No $J_{2}$, atmospheric drag, solar-radiation pressure, lunar/solar gravity, relativity, or manoeuvres are included. The study deliberately isolates Keplerian nonlinearity; it is unsuitable for flight-accuracy prediction over the roughly 13-day analysis interval.
 
 ### 2.2 Conserved specific energy
 
@@ -56,9 +58,15 @@ and the Keplerian period
 
 $$T = 2\pi\sqrt{\frac{a^{3}}{\mu}}.$$
 
-For the INTEGRAL initial conditions used here,
+For the benchmark initial conditions used here,
 
 $$T = 227964.078\,\mathrm{s} \approx 63.323\,\mathrm{h}.$$
+
+The corresponding analytic elements and apsis radii are
+
+$$a = 80656.052\,\mathrm{km}, \qquad e = 0.8622545,$$
+
+$$r_p = a(1-e) = 11110.010\,\mathrm{km}, \qquad r_a = a(1+e) = 150202.093\,\mathrm{km}.$$
 
 ---
 
@@ -75,7 +83,7 @@ $$\frac{\mathrm{d}}{\mathrm{d}t}(\mathbf{r}\cdot\mathbf{v}) = \|\mathbf{v}\|^{2}
 - positive $\Rightarrow$ **pericentre** (radial distance increasing after the root),
 - negative $\Rightarrow$ **apocentre**.
 
-The first five events of each type become the analysis epochs. Their Cartesian states and UTC times are listed in [`results.md`](results.md).
+The first five events of each type become the analysis epochs. Their Cartesian states and UTC times are listed in [`results.md`](results.md). Every sigma point and Monte Carlo realization is evaluated at these same nominal event times; sample-specific apsides are not detected.
 
 ---
 
@@ -121,9 +129,9 @@ $$\bar{\mathbf{x}}_{\mathrm{UT}} = \sum_{i=0}^{2n} w_{i}^{(m)}\,\boldsymbol{\mat
 
 $$P_{\mathrm{UT}} = \sum_{i=0}^{2n} w_{i}^{(c)}\bigl(\boldsymbol{\mathcal{Y}}^{(i)}-\bar{\mathbf{x}}_{\mathrm{UT}}\bigr)\bigl(\boldsymbol{\mathcal{Y}}^{(i)}-\bar{\mathbf{x}}_{\mathrm{UT}}\bigr)^{\top},$$
 
-with the standard scaled mean and covariance weights $w_{i}^{(m)}$, $w_{i}^{(c)}$. The UT captures mean and covariance through third-order terms for Gaussian inputs under smooth nonlinearities, at the cost of only $13$ trajectories instead of thousands.
+with the standard scaled mean and covariance weights $w_{i}^{(m)}$, $w_{i}^{(c)}$. The scaled UT is second-order accurate in the predicted mean and covariance. For Gaussian inputs, $\beta=2$ incorporates part of the fourth-order covariance information. Its deterministic $13$ trajectories are much cheaper than Monte Carlo, but the negative central weights produced by these parameters ($w_0^{(m)}=-99$, $w_0^{(c)}=-96.01$) require numerical checks; the script verifies reconstruction of the supplied mean and covariance before propagation.
 
-### 4.3 Monte Carlo
+### 4.3 Monte Carlo and stability diagnostic
 
 Draw $N_{\mathrm{MC}}=2000$ independent samples
 
@@ -131,9 +139,11 @@ $$\mathbf{x}_{0}^{(k)} = \bar{\mathbf{x}}_{0} + L\,\boldsymbol{\xi}^{(k)}, \qqua
 
 where $L$ is the lower Cholesky factor of $P_{0}$ and the generator is seeded with $42$ for reproducibility. Propagate each sample to every apsis time. The sample mean and unbiased sample covariance define $P_{\mathrm{MC}}$ and $\bar{\mathbf{x}}_{\mathrm{MC}}$.
 
-**Convergence criterion.** At the last pericentre and last apocentre, form the cumulative mean $\bar{\mathbf{x}}_{N}$ for $N=1,\ldots,N_{\mathrm{MC}}$. Let $\sigma_{j}$ be the full-sample standard deviation of component $j$. Convergence is declared at the smallest $N_{\min}$ such that, for every later index, the maximum absolute component-wise deviation from the final mean stays within $0.05\,\sigma_{j}$ simultaneously for both apsides. The run reported here yields
+**Retrospective stability diagnostic.** At the last pericentre and last apocentre, form the cumulative mean $\bar{\mathbf{x}}_{N}$ for $N=1,\ldots,N_{\mathrm{MC}}$. Let $\sigma_{j}$ be the full-sample standard deviation of component $j$. The reported $N_{\min}$ is the smallest sample count after which every cumulative mean remains within $0.05\,\sigma_j$ of the same run's final mean, simultaneously for both apsides. The run reported here yields
 
 $$N_{\min} = 834 \quad\text{at}\quad 0.050\,\sigma.$$
+
+This is a descriptive within-run stability measure, not an independent convergence proof: because the final sample mean is the reference, the condition necessarily holds at $N=N_{\mathrm{MC}}$. For scale, a Gaussian sample variance based on $2000$ independent draws has an approximate relative standard error $\sqrt{2/(N-1)}=3.16\%$.
 
 ---
 
@@ -157,7 +167,7 @@ All trajectories use MATLAB’s variable-order Adams–Bashforth–Moulton solve
 
 $$\mathrm{RelTol} = 10^{-12}, \qquad \mathrm{AbsTol} = 10^{-13}.$$
 
-The same options apply to the variational (STM) integration and to every sigma-point or Monte Carlo sample, so differences among methods arise from the uncertainty representation rather than from inconsistent numerics.
+The same options apply to the variational (STM) integration and to every sigma-point or Monte Carlo sample, so there is no deliberate solver inconsistency between methods. Monte Carlo results additionally contain finite-sample noise.
 
 ---
 
@@ -180,7 +190,7 @@ Initial covariance (position block in $\mathrm{km}^{2}$, velocity block in $(\ma
 
 $$P_{0} = \begin{bmatrix} 6.7\times 10^{-3} & -2.1\times 10^{-3} & 7.6\times 10^{-4} & 0 & 0 & 0 \\ -2.1\times 10^{-3} & 9.7\times 10^{-3} & 5.3\times 10^{-4} & 0 & 0 & 0 \\ 7.6\times 10^{-4} & 5.3\times 10^{-4} & 2.1\times 10^{-3} & 0 & 0 & 0 \\ 0 & 0 & 0 & 4.7\times 10^{-7} & 0 & 0 \\ 0 & 0 & 0 & 0 & 3.1\times 10^{-7} & 0 \\ 0 & 0 & 0 & 0 & 0 & 1.6\times 10^{-7} \end{bmatrix}.$$
 
-The mean state lies near apocentre: $\|\mathbf{r}_{0}\|\approx 1.502\times 10^{5}\,\mathrm{km}$.
+The mean state lies at apocentre to numerical precision: its radial velocity is approximately $-1.44\times10^{-9}\,\mathrm{km}/\mathrm{s}$. The numerical values are fully reproducible, but their estimation source is not documented in this repository; they define the benchmark rather than a traceable flight solution.
 
 ---
 
@@ -188,22 +198,26 @@ The mean state lies near apocentre: $\|\mathbf{r}_{0}\|\approx 1.502\times 10^{5
 
 Before accepting the figures, the script asserts:
 
-1. **Periodicity of apsides.** Successive pericentre (and apocentre) times differ from $T$ by less than $0.1\,\mathrm{s}$.
-2. **Energy conservation.** Relative drift of $\varepsilon$ at all apsides is below $10^{-10}$.
-3. **STM consistency.** At the first target epoch, the variational $\Phi$ agrees with a central finite-difference STM to a relative Frobenius error below $10^{-5}$.
-4. **Covariance integrity.** Every LinCov, UT, and Monte Carlo covariance is symmetrized and verified to be positive semidefinite.
+1. **Periodicity of apsides.** Successive pericentre and apocentre times differ from $T$ by less than $0.1\,\mathrm{s}$.
+2. **Analytic apsis radii.** Detected radii agree with $a(1\mp e)$ within $10^{-5}\,\mathrm{km}$.
+3. **Two-body invariants.** Relative specific-energy and angular-momentum drift at every apsis are each below $10^{-10}$.
+4. **STM consistency.** At the first target epoch, the variational $\Phi$ agrees with a central finite-difference STM to a relative Frobenius error below $10^{-5}$.
+5. **Sigma-point reconstruction.** The scaled UT points reproduce the supplied mean and covariance to dimensionless tolerances of $10^{-12}$ and $10^{-8}$.
+6. **Monte Carlo validity.** Every propagated sample is finite.
+7. **Covariance integrity.** Every LinCov, UT, and Monte Carlo covariance is finite and symmetric; positive semidefiniteness is checked after normalization to a dimensionless correlation matrix.
 
 The verified run reports:
 
 ```text
-Uncertainty-propagation verification passed: apsis timing, energy, symmetry, and PSD checks.
+Verification passed: max apsis-spacing error 8e-06 s, relative energy drift
+2.34e-11, relative angular-momentum drift 1.02e-11, STM error 5.11e-09.
 ```
 
 ---
 
 ## 9. How to run
 
-**Requirements.** MATLAB with base plotting and ODE support (tested with R2025b). No additional toolboxes are required. The script does not call SPICE/MICE.
+**Requirements.** MATLAB with base plotting and ODE support (tested with R2025b). No additional toolboxes are required.
 
 **From the repository root:**
 
@@ -219,17 +233,24 @@ matlab -batch "integral_uncertainty_propagation"
 
 With `saveFigures = true` (default), ten PNG files are written to `plots/` at $300\,\mathrm{dpi}$. Runtime is dominated by the $2000$ Monte Carlo integrations (typically a few minutes).
 
-The entry script [`integral_uncertainty_propagation.m`](integral_uncertainty_propagation.m) is self-contained (local functions). The [`functions/`](functions/) directory holds the same helpers as modular files for reuse.
+The entry script [`integral_uncertainty_propagation.m`](integral_uncertainty_propagation.m) is self-contained; its helpers are local functions in the same file.
 
 ---
 
 ## 10. Results
 
-Quantitative tables (apsis states, $N_{\min}$, verification status) are in [`results.md`](results.md). The figures below are produced by the verified run.
+Quantitative tables and diagnostics are in [`results.md`](results.md). The verified run supports four main conclusions:
+
+- UT captures the nonlinear mean shift: its largest component discrepancy from the Monte Carlo mean is $2.25$ Monte Carlo standard errors, versus $28.96$ for LinCov.
+- Maximum covariance-axis discrepancies against Monte Carlo range from about $0.3\%$ to $4.5\%$, comparable in scale to finite-sample covariance uncertainty for several cases; the results do not support a universal covariance-accuracy ranking between LinCov and UT.
+- Principal axes mask important component errors: at pericentre 5, UT reduces radial-position and transverse-velocity standard-deviation errors to $+5.0\%$ and $+8.8\%$, while both deterministic methods underpredict normal-position dispersion by at least $97.9\%$.
+- By the fifth pericentre, maximum absolute component skewness is $2.84$ and excess kurtosis is $12.43$, so Gaussian ellipses do not fully describe the propagated distribution.
+
+The figures below are produced by the same run.
 
 ### 10.1 Mean difference: UT versus LinCov
 
-The RTH components of $\bar{\mathbf{x}}_{\mathrm{UT}}-\bar{\mathbf{x}}_{\mathrm{Lin}}$ measure the first-order bias that the linear mean misses. Nonzero along-track components are expected when phase errors couple to the eccentric geometry.
+The RTH components of $\bar{\mathbf{x}}_{\mathrm{UT}}-\bar{\mathbf{x}}_{\mathrm{Lin}}$ measure the nonlinear mean correction predicted by the UT. They are not errors against truth; the Monte Carlo sample mean and its standard error provide the independent numerical comparison.
 
 ![UT minus LinCov mean at pericentres](plots/pericentre_mean_difference.png)
 
@@ -241,39 +262,39 @@ The RTH components of $\bar{\mathbf{x}}_{\mathrm{UT}}-\bar{\mathbf{x}}_{\mathrm{
 
 ### 10.2 Standard deviations in RTH
 
-Diagonal elements of $P_{\mathrm{RTH}}^{1/2}$ for LinCov and UT show how $1\sigma$ uncertainties grow or redistribute among radial, transverse, and normal directions across revolutions.
+The component standard deviations $\sqrt{(P_{\mathrm{RTH}})_{jj}}$ for LinCov, UT, and Monte Carlo show how uncertainty grows or redistributes among radial, transverse, and normal directions across revolutions. These plots reveal component-specific failures that the maximum-axis summary can hide.
 
 ![RTH standard deviations at pericentres](plots/pericentre_rth_standard_deviations.png)
 
-*Figure 3. LinCov and UT $1\sigma$ standard deviations in RTH at pericentres.*
+*Figure 3. LinCov, UT, and Monte Carlo $1\sigma$ standard deviations in RTH at pericentres.*
 
 ![RTH standard deviations at apocentres](plots/apocentre_rth_standard_deviations.png)
 
-*Figure 4. LinCov and UT $1\sigma$ standard deviations in RTH at apocentres.*
+*Figure 4. LinCov, UT, and Monte Carlo $1\sigma$ standard deviations in RTH at apocentres.*
 
 ### 10.3 Cross-covariances in RTH
 
-Off-diagonal blocks encode correlations (for example radial–transverse coupling). Agreement between LinCov and UT indicates that the linear map already captures the dominant second-moment structure; divergence indicates nonlinear redistribution of correlation.
+Off-diagonal terms encode correlations such as radial–transverse coupling. Monte Carlo provides the finite-sample reference needed to distinguish agreement between the deterministic methods from agreement with the propagated ensemble.
 
 ![RTH cross-covariances at pericentres](plots/pericentre_rth_cross_covariances.png)
 
-*Figure 5. Selected RTH cross-covariances at pericentres (LinCov vs. UT).*
+*Figure 5. Selected RTH cross-covariances at pericentres for all three methods.*
 
 ![RTH cross-covariances at apocentres](plots/apocentre_rth_cross_covariances.png)
 
-*Figure 6. Selected RTH cross-covariances at apocentres (LinCov vs. UT).*
+*Figure 6. Selected RTH cross-covariances at apocentres for all three methods.*
 
-### 10.4 Monte Carlo mean convergence
+### 10.4 Monte Carlo mean stability
 
-Cumulative means at the final pericentre and apocentre stabilize by $N_{\min}=834$ under the $0.05\sigma$ rule; the remaining samples refine the covariance estimate.
+Cumulative means at the final pericentre and apocentre remain within the retrospective $0.05\sigma$ band after $N_{\min}=834$. This does not establish convergence to the population moments.
 
-![Monte Carlo mean convergence](plots/monte_carlo_mean_convergence.png)
+![Monte Carlo mean stability](plots/monte_carlo_mean_convergence.png)
 
 *Figure 7. Cumulative Monte Carlo mean components versus sample index. The vertical marker indicates $N_{\min}=834$.*
 
 ### 10.5 Sample clouds and $3\sigma$ ellipses
 
-Monte Carlo positions projected into the local radial–transverse plane are overlaid with $3\sigma$ ellipses from LinCov, UT, and the sample covariance. Visual overlap assesses whether the Gaussian approximations match the empirical cloud.
+Monte Carlo positions projected into the local radial–transverse plane are overlaid with contours whose semiaxes are three standard deviations from LinCov, UT, and the sample covariance. For a bivariate Gaussian, this contour encloses $1-e^{-9/2}\approx98.89\%$ of the probability, not $99.7\%$.
 
 ![Monte Carlo distributions at pericentres](plots/pericentre_monte_carlo_distributions.png)
 
@@ -285,7 +306,7 @@ Monte Carlo positions projected into the local radial–transverse plane are ove
 
 ### 10.6 Maximum covariance axes
 
-The largest $3\sigma$ principal axes of the position and velocity covariance blocks summarize the worst-case linear uncertainty size. Differences of LinCov and UT axes relative to Monte Carlo quantify method bias in that scalar metric.
+The largest $3\sigma$ principal axes of the position and velocity covariance blocks summarize the maximum linear uncertainty size. Differences of LinCov and UT axes relative to the finite-sample Monte Carlo estimate quantify method discrepancy in that scalar metric, but must be read together with the component plots because the dominant eigenvalue can hide large errors in smaller directions.
 
 ![Maximum covariance axes](plots/maximum_covariance_axes.png)
 
@@ -298,19 +319,25 @@ The largest $3\sigma$ principal axes of the position and velocity covariance blo
 ```text
 integral_uncertainty_propagation/
 ├── integral_uncertainty_propagation.m   # Main script (self-contained)
-├── functions/                           # Modular copies of helpers
 ├── plots/                               # Generated PNG figures
 ├── results.md                           # Tabulated numerical results
 ├── README.md                            # This document
-├── .gitignore                           # Ignores mice/ and local junk
-├── ai_ip_measurements.csv               # Ancillary measurement set (unused by main)
-└── kernels/                             # SPICE kernels (unused by main)
+├── LICENSE                              # MIT license
+└── .gitignore                           # Local MATLAB and OS artifacts
 ```
-
-A local `mice/` tree (MATLAB interface to NAIF CSPICE), if present on disk, is listed in [`.gitignore`](.gitignore) and is **not** required to run this study.
 
 ---
 
-## 12. Author
+## 12. References
 
-Pasquale Marzaioli
+- S. J. Julier and J. K. Uhlmann, “Unscented Filtering and Nonlinear Estimation,” *Proceedings of the IEEE*, 92(3), 401–422, 2004. [doi:10.1109/JPROC.2003.823141](https://doi.org/10.1109/JPROC.2003.823141)
+- S. J. Julier, “The Scaled Unscented Transformation,” *Proceedings of the American Control Conference*, 4555–4559, 2002. [doi:10.1109/ACC.2002.1025369](https://doi.org/10.1109/ACC.2002.1025369)
+- [IERS Conventions (2010), Technical Note 36](https://www.iers.org/IERS/EN/Publications/TechnicalNotes/tn36.html) for the conventional Earth gravitational parameter.
+- [MATLAB `ode113` documentation](https://www.mathworks.com/help/matlab/ref/ode113.html) for the variable-step, variable-order Adams–Bashforth–Moulton implementation.
+- [ESA INTEGRAL overview](https://www.esa.int/Science_Exploration/Space_Science/Integral/Integral_overview) for mission and orbit context; the supplied benchmark state is not asserted to reproduce an ESA operational ephemeris.
+
+---
+
+## 13. License and author
+
+Copyright © 2026 Pasquale Marzaioli. Released under the [MIT License](LICENSE).

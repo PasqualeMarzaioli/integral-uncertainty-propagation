@@ -1,4 +1,8 @@
-# Bundled SPICE/MICE toolkit (unused by the main script)
+# .gitignore — Exclude local runtime, editor, and operating-system artifacts.
+# Keeps reproducible source and generated publication figures under version control.
+# Author: Pasquale Marzaioli
+
+# Local SPICE/MICE toolkit (not required by this benchmark)
 mice/
 
 # MATLAB / Octave autosaves

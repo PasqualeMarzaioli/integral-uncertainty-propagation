@@ -21,8 +21,8 @@ initialCovariance = [6.7e-3, -2.1e-3,  7.6e-4, 0, 0, 0; ...
                      0,       0,       0,       0, 0, 1.6e-7];
 
 numberOfApsides = 5;
-numberOfConvergenceSamples = 2000;
-convergenceToleranceSigma = 0.05;
+numberOfMonteCarloSamples = 2000;
+stabilityToleranceSigma = 0.05;
 randomSeed = 42;
 saveFigures = true;
 figureDirectory = "plots";
@@ -101,6 +101,20 @@ kappa = 0;
 [sigmaPoints, meanWeights, covarianceWeights] = unscentedSigmaPoints( ...
     initialMean, initialCovariance, alpha, beta, kappa);
 
+% Verify that cancellation from the scaled negative weights still reproduces
+% the prescribed first two moments at machine precision.
+reconstructedMean = sigmaPoints * meanWeights;
+centeredInitialSigmaPoints = sigmaPoints - reconstructedMean;
+reconstructedCovariance = (centeredInitialSigmaPoints .* covarianceWeights.') ...
+    * centeredInitialSigmaPoints.';
+componentScales = sqrt(diag(initialCovariance));
+normalizedCovarianceError = (reconstructedCovariance - initialCovariance) ./ ...
+    (componentScales * componentScales.');
+assert(max(abs(reconstructedMean - initialMean) ./ max(abs(initialMean), 1)) < 1e-12, ...
+    "UT sigma points do not reconstruct the initial mean accurately.");
+assert(max(abs(normalizedCovarianceError), [], "all") < 1e-8, ...
+    "UT sigma points do not reconstruct the initial covariance accurately.");
+
 numberOfSigmaPoints = size(sigmaPoints, 2);
 propagatedSigmaPoints = zeros(6, numel(targetTimes), numberOfSigmaPoints);
 for sigmaIndex = 1:numberOfSigmaPoints
@@ -118,31 +132,32 @@ for epochIndex = 1:numel(targetTimes)
         (centeredSigmaPoints .* covarianceWeights.') * centeredSigmaPoints.');
 end
 
-%% Monte Carlo propagation and convergence
+%% Monte Carlo propagation and retrospective mean stability
 
 rng(randomSeed, "twister");
 initialSquareRoot = chol(initialCovariance, "lower");
 initialSamples = initialMean + initialSquareRoot * ...
-    randn(6, numberOfConvergenceSamples);
-propagatedSamples = zeros(6, numel(targetTimes), numberOfConvergenceSamples);
+    randn(6, numberOfMonteCarloSamples);
+propagatedSamples = zeros(6, numel(targetTimes), numberOfMonteCarloSamples);
 
 fprintf("Propagating %d independent Monte Carlo samples...\n", ...
-    numberOfConvergenceSamples);
-progressStep = max(1, floor(numberOfConvergenceSamples / 10));
-for sampleIndex = 1:numberOfConvergenceSamples
+    numberOfMonteCarloSamples);
+progressStep = max(1, floor(numberOfMonteCarloSamples / 10));
+for sampleIndex = 1:numberOfMonteCarloSamples
     propagatedSamples(:, :, sampleIndex) = propagateState( ...
         initialSamples(:, sampleIndex), targetTimes, muEarth, integratorOptions);
     if mod(sampleIndex, progressStep) == 0
         fprintf("  Monte Carlo progress: %d/%d\n", ...
-            sampleIndex, numberOfConvergenceSamples);
+            sampleIndex, numberOfMonteCarloSamples);
     end
 end
+assert(all(isfinite(propagatedSamples), "all"), ...
+    "Monte Carlo propagation produced a non-finite state.");
 
-analysisSamples = propagatedSamples;
 monteCarloMeans = zeros(6, numel(targetTimes));
 monteCarloCovariances = zeros(6, 6, numel(targetTimes));
 for epochIndex = 1:numel(targetTimes)
-    epochSamples = reshape(analysisSamples(:, epochIndex, :), 6, []);
+    epochSamples = reshape(propagatedSamples(:, epochIndex, :), 6, []);
     monteCarloMeans(:, epochIndex) = mean(epochSamples, 2);
     monteCarloCovariances(:, :, epochIndex) = cov(epochSamples.');
 end
@@ -151,12 +166,12 @@ finalPericentreSamples = reshape( ...
     propagatedSamples(:, pericentreTargetIndices(end), :), 6, []);
 finalApocentreSamples = reshape( ...
     propagatedSamples(:, apocentreTargetIndices(end), :), 6, []);
-sampleCount = 1:numberOfConvergenceSamples;
+sampleCount = 1:numberOfMonteCarloSamples;
 pericentreCumulativeMean = cumsum(finalPericentreSamples, 2) ./ sampleCount;
 apocentreCumulativeMean = cumsum(finalApocentreSamples, 2) ./ sampleCount;
 
-% Define convergence as remaining within a fixed fraction of each component's
-% final sample standard deviation for every subsequent cumulative estimate.
+% Measure retrospective stability against the same run's final sample mean;
+% this is descriptive and is not an independent convergence proof.
 pericentreScale = max(std(finalPericentreSamples, 0, 2), eps);
 apocentreScale = max(std(finalApocentreSamples, 0, 2), eps);
 pericentreNormalizedError = max(abs(pericentreCumulativeMean ...
@@ -166,11 +181,10 @@ apocentreNormalizedError = max(abs(apocentreCumulativeMean ...
 remainingNormalizedError = fliplr(cummax(fliplr(max( ...
     pericentreNormalizedError, apocentreNormalizedError))));
 minimumStableSampleCount = find( ...
-    remainingNormalizedError <= convergenceToleranceSigma, 1);
-assert(~isempty(minimumStableSampleCount), ...
-    "Monte Carlo convergence could not be established.");
-fprintf("Monte Carlo means remain within %.3f sigma after N = %d samples.\n", ...
-    convergenceToleranceSigma, minimumStableSampleCount);
+    remainingNormalizedError <= stabilityToleranceSigma, 1);
+fprintf("Relative to the full sample, Monte Carlo means remain within " + ...
+    "%.3f sigma after N = %d samples.\n", ...
+    stabilityToleranceSigma, minimumStableSampleCount);
 
 %% Transform results to the local RTH frames
 
@@ -202,6 +216,57 @@ pericentreMeanDifferenceRth = transformMeanDifference( ...
 apocentreMeanDifferenceRth = transformMeanDifference( ...
     unscentedApocentreMeans - linearApocentreMeans, apocentreFrames);
 
+%% Physical and numerical verification
+
+pericentreSpacingError = max(abs(diff(pericentreTimes) - orbitalPeriod));
+apocentreSpacingError = max(abs(diff(apocentreTimes) - orbitalPeriod));
+assert(pericentreSpacingError < 0.1, ...
+    "Pericentre spacing is inconsistent with the Keplerian period.");
+assert(apocentreSpacingError < 0.1, ...
+    "Apocentre spacing is inconsistent with the Keplerian period.");
+
+allNominalStates = [pericentreStates, apocentreStates];
+specificEnergy = vecnorm(allNominalStates(4:6, :), 2, 1).^2 / 2 ...
+    - muEarth ./ vecnorm(allNominalStates(1:3, :), 2, 1);
+referenceEnergy = initialSpeedSquared / 2 - muEarth / initialRadius;
+relativeEnergyDrift = max(abs((specificEnergy - referenceEnergy) / referenceEnergy));
+assert(relativeEnergyDrift < 1e-10, ...
+    "Specific orbital energy was not conserved to the requested tolerance.");
+
+initialAngularMomentum = cross(initialMean(1:3), initialMean(4:6));
+eventAngularMomentum = cross(allNominalStates(1:3, :), allNominalStates(4:6, :));
+relativeAngularMomentumDrift = max(vecnorm( ...
+    eventAngularMomentum - initialAngularMomentum, 2, 1)) ...
+    / norm(initialAngularMomentum);
+assert(relativeAngularMomentumDrift < 1e-10, ...
+    "Specific angular momentum was not conserved to the requested tolerance.");
+
+eccentricityVector = cross(initialMean(4:6), initialAngularMomentum) / muEarth ...
+    - initialMean(1:3) / initialRadius;
+eccentricity = norm(eccentricityVector);
+expectedPericentreRadius = semimajorAxis * (1 - eccentricity);
+expectedApocentreRadius = semimajorAxis * (1 + eccentricity);
+assert(abs(norm(pericentreStates(1:3, 1)) - expectedPericentreRadius) < 1e-5, ...
+    "Detected pericentre radius disagrees with the analytic two-body value.");
+assert(abs(norm(apocentreStates(1:3, 1)) - expectedApocentreRadius) < 1e-5, ...
+    "Detected apocentre radius disagrees with the analytic two-body value.");
+
+firstStateTransitionMatrix = reshape(augmentedHistory(7:end, 1), 6, 6);
+finiteDifferenceMatrix = finiteDifferenceStateTransition( ...
+    initialMean, targetTimes(1), muEarth, integratorOptions);
+relativeStmError = norm(firstStateTransitionMatrix - finiteDifferenceMatrix, "fro") ...
+    / norm(finiteDifferenceMatrix, "fro");
+assert(relativeStmError < 1e-5, ...
+    "The variational STM disagrees with a central finite-difference check.");
+
+assertCovarianceSeries(linearCovariances, "LinCov");
+assertCovarianceSeries(unscentedCovariances, "UT");
+assertCovarianceSeries(monteCarloCovariances, "Monte Carlo");
+fprintf("Verification passed: max apsis-spacing error %.3g s, relative energy " + ...
+    "drift %.3g, relative angular-momentum drift %.3g, STM error %.3g.\n", ...
+    max(pericentreSpacingError, apocentreSpacingError), relativeEnergyDrift, ...
+    relativeAngularMomentumDrift, relativeStmError);
+
 %% Reproduce the uncertainty-propagation figures
 
 plotMeanDifference(pericentreMeanDifferenceRth, "Pericentre", ...
@@ -212,36 +277,40 @@ plotMeanDifference(apocentreMeanDifferenceRth, "Apocentre", ...
     "apocentre_mean_difference", saveFigures, figureDirectory);
 
 plotStandardDeviations(linearPericentreCovariancesRth, ...
-    unscentedPericentreCovariancesRth, "Pericentre", ...
+    unscentedPericentreCovariancesRth, monteCarloPericentreCovariancesRth, ...
+    "Pericentre", ...
     "RTH standard deviations at pericentres", ...
     "pericentre_rth_standard_deviations", saveFigures, figureDirectory);
 plotStandardDeviations(linearApocentreCovariancesRth, ...
-    unscentedApocentreCovariancesRth, "Apocentre", ...
+    unscentedApocentreCovariancesRth, monteCarloApocentreCovariancesRth, ...
+    "Apocentre", ...
     "RTH standard deviations at apocentres", ...
     "apocentre_rth_standard_deviations", saveFigures, figureDirectory);
 
 plotCrossCovariances(linearPericentreCovariancesRth, ...
-    unscentedPericentreCovariancesRth, "Pericentre", ...
+    unscentedPericentreCovariancesRth, monteCarloPericentreCovariancesRth, ...
+    "Pericentre", ...
     "RTH cross-covariances at pericentres", ...
     "pericentre_rth_cross_covariances", saveFigures, figureDirectory);
 plotCrossCovariances(linearApocentreCovariancesRth, ...
-    unscentedApocentreCovariancesRth, "Apocentre", ...
+    unscentedApocentreCovariancesRth, monteCarloApocentreCovariancesRth, ...
+    "Apocentre", ...
     "RTH cross-covariances at apocentres", ...
     "apocentre_rth_cross_covariances", saveFigures, figureDirectory);
 
-plotMonteCarloConvergence(sampleCount, pericentreCumulativeMean, ...
+plotMonteCarloStability(sampleCount, pericentreCumulativeMean, ...
     apocentreCumulativeMean, minimumStableSampleCount, ...
-    "Monte Carlo mean convergence", ...
+    "Monte Carlo mean stability", ...
     "monte_carlo_mean_convergence", saveFigures, figureDirectory);
 
-plotMonteCarloEllipses(analysisSamples(:, pericentreTargetIndices, :), ...
+plotMonteCarloEllipses(propagatedSamples(:, pericentreTargetIndices, :), ...
     linearPericentreMeans, unscentedPericentreMeans, ...
     monteCarloMeans(:, pericentreTargetIndices), ...
     linearPericentreCovariances, unscentedPericentreCovariances, ...
     monteCarloPericentreCovariances, pericentreFrames, "Pericentre", ...
     "Monte Carlo distributions at pericentres", ...
     "pericentre_monte_carlo_distributions", saveFigures, figureDirectory);
-plotMonteCarloEllipses(analysisSamples(:, apocentreTargetIndices, :), ...
+plotMonteCarloEllipses(propagatedSamples(:, apocentreTargetIndices, :), ...
     linearApocentreMeans, unscentedApocentreMeans, ...
     monteCarloMeans(:, apocentreTargetIndices), ...
     linearApocentreCovariances, unscentedApocentreCovariances, ...
@@ -255,37 +324,10 @@ plotMaximumCovarianceAxes(linearPericentreCovariances, ...
     monteCarloApocentreCovariances, "Maximum covariance axes", ...
     "maximum_covariance_axes", saveFigures, figureDirectory);
 
-%% Physical and numerical verification
-
-assert(max(abs(diff(pericentreTimes) - orbitalPeriod)) < 0.1, ...
-    "Pericentre spacing is inconsistent with the Keplerian period.");
-assert(max(abs(diff(apocentreTimes) - orbitalPeriod)) < 0.1, ...
-    "Apocentre spacing is inconsistent with the Keplerian period.");
-
-allNominalStates = [pericentreStates, apocentreStates];
-specificEnergy = vecnorm(allNominalStates(4:6, :), 2, 1).^2 / 2 ...
-    - muEarth ./ vecnorm(allNominalStates(1:3, :), 2, 1);
-referenceEnergy = initialSpeedSquared / 2 - muEarth / initialRadius;
-assert(max(abs((specificEnergy - referenceEnergy) / referenceEnergy)) < 1e-10, ...
-    "Specific orbital energy was not conserved to the requested tolerance.");
-
-firstStateTransitionMatrix = reshape(augmentedHistory(7:end, 1), 6, 6);
-finiteDifferenceMatrix = finiteDifferenceStateTransition( ...
-    initialMean, targetTimes(1), muEarth, integratorOptions);
-relativeStmError = norm(firstStateTransitionMatrix - finiteDifferenceMatrix, "fro") ...
-    / norm(finiteDifferenceMatrix, "fro");
-assert(relativeStmError < 1e-5, ...
-    "The variational STM disagrees with a central finite-difference check.");
-
-assertCovarianceSeries(linearCovariances, "LinCov");
-assertCovarianceSeries(unscentedCovariances, "UT");
-assertCovarianceSeries(monteCarloCovariances, "Monte Carlo");
-fprintf("Uncertainty-propagation verification passed: apsis timing, energy, symmetry, and PSD checks.\n");
-
 %% Local functions
 
 function derivative = twoBodyDynamics(~, state, mu)
-% Evaluate point-mass Earth dynamics in ECI J2000.
+% Evaluate point-mass Earth dynamics in the benchmark inertial frame.
 position = state(1:3);
 radius = norm(position);
 derivative = [state(4:6); -mu * position / radius^3];
@@ -346,7 +388,7 @@ end
 end
 
 function frame = rthFrame(state)
-% Build row basis vectors that map ECI components into radial-transverse-normal.
+% Build row basis vectors that map inertial components into radial-transverse-normal.
 radial = state(1:3) / norm(state(1:3));
 normal = cross(state(1:3), state(4:6));
 normal = normal / norm(normal);
@@ -429,8 +471,9 @@ xlabel(apsisLabel);
 saveNamedFigure(gcf, fileName, saveFlag, folder);
 end
 
-function plotStandardDeviations(linear, unscented, apsisLabel, figureName, fileName, saveFlag, folder)
-% Compare LinCov and UT one-sigma histories for every RTH state component.
+function plotStandardDeviations(linear, unscented, monteCarlo, ...
+    apsisLabel, figureName, fileName, saveFlag, folder)
+% Compare all three one-sigma histories for every RTH state component.
 figure("Name", figureName, "Color", "w");
 tiledlayout(3, 2, "TileSpacing", "compact");
 componentLabels = ["r", "t", "h"];
@@ -442,10 +485,12 @@ for component = 1:3
     hold on;
     plot(apsisIndices, sqrt(reshape(unscented(component, component, :), [], 1)), ...
         "--s", "LineWidth", 1.5);
+    plot(apsisIndices, sqrt(reshape(monteCarlo(component, component, :), [], 1)), ...
+        ":d", "Color", "k", "LineWidth", 1.5);
     grid on;
     ylabel(sprintf("\\sigma_{r,%s} / km", componentLabels(component)));
     if component == 1
-        legend("LinCov", "UT", "Location", "best");
+        legend("LinCov", "UT", "MC", "Location", "best");
     end
     nexttile;
     plot(apsisIndices, sqrt(reshape(linear(component + 3, component + 3, :), [], 1)), ...
@@ -453,6 +498,9 @@ for component = 1:3
     hold on;
     plot(apsisIndices, sqrt(reshape(unscented(component + 3, component + 3, :), [], 1)), ...
         "--s", "LineWidth", 1.5);
+    plot(apsisIndices, sqrt(reshape( ...
+        monteCarlo(component + 3, component + 3, :), [], 1)), ...
+        ":d", "Color", "k", "LineWidth", 1.5);
     grid on;
     ylabel(sprintf("\\sigma_{v,%s} / km/s", componentLabels(component)));
 end
@@ -460,8 +508,9 @@ xlabel(apsisLabel);
 saveNamedFigure(gcf, fileName, saveFlag, folder);
 end
 
-function plotCrossCovariances(linear, unscented, apsisLabel, figureName, fileName, saveFlag, folder)
-% Compare the three distinct within-position and within-velocity covariances.
+function plotCrossCovariances(linear, unscented, monteCarlo, ...
+    apsisLabel, figureName, fileName, saveFlag, folder)
+% Compare the distinct within-position and within-velocity covariances.
 figure("Name", figureName, "Color", "w");
 tiledlayout(3, 2, "TileSpacing", "compact");
 pairs = [1, 2; 1, 3; 2, 3];
@@ -476,10 +525,12 @@ for pairIndex = 1:3
     hold on;
     plot(apsisIndices, reshape(unscented(row, column, :), [], 1), ...
         "--s", "LineWidth", 1.5);
+    plot(apsisIndices, reshape(monteCarlo(row, column, :), [], 1), ...
+        ":d", "Color", "k", "LineWidth", 1.5);
     grid on;
     ylabel(sprintf("P_{r,%s} / km^2", pairLabels(pairIndex)));
     if pairIndex == 1
-        legend("LinCov", "UT", "Location", "best");
+        legend("LinCov", "UT", "MC", "Location", "best");
     end
     nexttile;
     plot(apsisIndices, reshape(linear(row + 3, column + 3, :), [], 1), ...
@@ -487,6 +538,8 @@ for pairIndex = 1:3
     hold on;
     plot(apsisIndices, reshape(unscented(row + 3, column + 3, :), [], 1), ...
         "--s", "LineWidth", 1.5);
+    plot(apsisIndices, reshape(monteCarlo(row + 3, column + 3, :), [], 1), ...
+        ":d", "Color", "k", "LineWidth", 1.5);
     grid on;
     ylabel(sprintf("P_{v,%s} / km^2/s^2", pairLabels(pairIndex)));
 end
@@ -494,25 +547,31 @@ xlabel(apsisLabel);
 saveNamedFigure(gcf, fileName, saveFlag, folder);
 end
 
-function plotMonteCarloConvergence(sampleCount, pericentreMean, apocentreMean, ...
+function plotMonteCarloStability(sampleCount, pericentreMean, apocentreMean, ...
     minimumStableSampleCount, figureName, fileName, saveFlag, folder)
 % Show the cumulative sample mean at the final pericentre and apocentre.
 figure("Name", figureName, "Color", "w");
-tiledlayout(6, 2, "TileSpacing", "compact");
+layout = tiledlayout(6, 2, "TileSpacing", "compact");
 stateLabels = ["r_1 / km", "r_2 / km", "r_3 / km", ...
     "v_1 / km/s", "v_2 / km/s", "v_3 / km/s"];
 for component = 1:6
     nexttile;
     plot(sampleCount, pericentreMean(component, :), "k");
-    xline(minimumStableSampleCount, "--", "N_{min}", "HandleVisibility", "off");
+    xline(minimumStableSampleCount, "--", "HandleVisibility", "off");
     grid on;
     ylabel(stateLabels(component));
+    if component == 1
+        title("Final pericentre");
+    end
     nexttile;
     plot(sampleCount, apocentreMean(component, :), "k");
-    xline(minimumStableSampleCount, "--", "N_{min}", "HandleVisibility", "off");
+    xline(minimumStableSampleCount, "--", "HandleVisibility", "off");
     grid on;
+    if component == 1
+        title("Final apocentre");
+    end
 end
-xlabel("Number of Monte Carlo samples");
+xlabel(layout, "Number of Monte Carlo samples");
 saveNamedFigure(gcf, fileName, saveFlag, folder);
 end
 
@@ -522,7 +581,7 @@ function plotMonteCarloEllipses(samples, linearMean, unscentedMean, monteCarloMe
 % Project samples, means, and three-sigma covariance ellipses into the R-T plane.
 figure("Name", figureName, "Color", "w");
 count = size(samples, 2);
-tiledlayout(1, count, "TileSpacing", "compact");
+tiledlayout(2, ceil(count / 2), "TileSpacing", "compact");
 for index = 1:count
     nexttile;
     frame = frames(:, :, index);
@@ -532,7 +591,7 @@ for index = 1:count
     plot(sampleDisplacements(1, :), sampleDisplacements(2, :), ".", ...
         "Color", [0.65, 0.65, 0.65], "MarkerSize", 3);
     hold on;
-    linearOffset = frame * (linearMean(1:3, index) - linearMean(1:3, index));
+    linearOffset = zeros(3, 1);
     unscentedOffset = frame * (unscentedMean(1:3, index) - linearMean(1:3, index));
     monteCarloOffset = frame * (monteCarloMean(1:3, index) - linearMean(1:3, index));
     plotCovarianceEllipse(transform(1:2, :) * linearCovariance(:, :, index) ...
@@ -548,10 +607,11 @@ for index = 1:count
     grid on;
     horizontalLimits = xlim;
     xticks(linspace(horizontalLimits(1), horizontalLimits(2), 3));
-    xlabel("r_r / km");
+    xlabel("\Delta r_r / km");
     if index == 1
-        ylabel("r_t / km");
-        legend("Samples", "LinCov", "UT", "MC", "Location", "best");
+        ylabel("\Delta r_t / km");
+        legendHandle = legend("Samples", "LinCov", "UT", "MC");
+        legendHandle.Layout.Tile = 6;
     end
     title(sprintf("%s %d", apsisLabel, index));
 end
@@ -578,6 +638,8 @@ function plotMaximumCovarianceAxes(linearPericentre, unscentedPericentre, monteC
 methodsPericentre = {linearPericentre, unscentedPericentre, monteCarloPericentre};
 methodsApocentre = {linearApocentre, unscentedApocentre, monteCarloApocentre};
 labels = ["LinCov", "UT", "MC"];
+linearColor = [0, 0.4470, 0.7410];
+unscentedColor = [0.8500, 0.3250, 0.0980];
 figure("Name", figureName, "Color", "w");
 tiledlayout(4, 2, "TileSpacing", "compact");
 for column = 1:2
@@ -601,22 +663,42 @@ for column = 1:2
         end
     end
     nexttile(column);
-    plot(apsisIndices, positionAxes, "LineWidth", 1.4);
+    plot(apsisIndices, positionAxes(1, :), "-o", ...
+        "Color", linearColor, "LineWidth", 1.4);
+    hold on;
+    plot(apsisIndices, positionAxes(2, :), "--s", ...
+        "Color", unscentedColor, "LineWidth", 1.4);
+    plot(apsisIndices, positionAxes(3, :), ":d", ...
+        "Color", "k", "LineWidth", 1.4);
     grid on;
     ylabel("3\sigma_{r,max} / km");
     if column == 1
         legend(labels, "Location", "best");
     end
     nexttile(column + 2);
-    plot(apsisIndices, positionAxes(1:2, :) - positionAxes(3, :), "LineWidth", 1.4);
+    plot(apsisIndices, positionAxes(1, :) - positionAxes(3, :), "-o", ...
+        "Color", linearColor, "LineWidth", 1.4);
+    hold on;
+    plot(apsisIndices, positionAxes(2, :) - positionAxes(3, :), "--s", ...
+        "Color", unscentedColor, "LineWidth", 1.4);
     grid on;
     ylabel("Difference / km");
     nexttile(column + 4);
-    plot(apsisIndices, velocityAxes, "LineWidth", 1.4);
+    plot(apsisIndices, velocityAxes(1, :), "-o", ...
+        "Color", linearColor, "LineWidth", 1.4);
+    hold on;
+    plot(apsisIndices, velocityAxes(2, :), "--s", ...
+        "Color", unscentedColor, "LineWidth", 1.4);
+    plot(apsisIndices, velocityAxes(3, :), ":d", ...
+        "Color", "k", "LineWidth", 1.4);
     grid on;
     ylabel("3\sigma_{v,max} / km/s");
     nexttile(column + 6);
-    plot(apsisIndices, velocityAxes(1:2, :) - velocityAxes(3, :), "LineWidth", 1.4);
+    plot(apsisIndices, velocityAxes(1, :) - velocityAxes(3, :), "-o", ...
+        "Color", linearColor, "LineWidth", 1.4);
+    hold on;
+    plot(apsisIndices, velocityAxes(2, :) - velocityAxes(3, :), "--s", ...
+        "Color", unscentedColor, "LineWidth", 1.4);
     grid on;
     ylabel("Difference / km/s");
     xlabel(apsisLabel);
@@ -630,15 +712,22 @@ covariance = (covariance + covariance.') / 2;
 end
 
 function assertCovarianceSeries(series, methodName)
-% Check symmetry and positive semidefiniteness at every propagated epoch.
+% Check finite values, symmetry, and PSD after removing mixed state units.
 for index = 1:size(series, 3)
     covariance = series(:, :, index);
-    symmetryError = norm(covariance - covariance.', "fro");
-    scale = max(1, norm(covariance, "fro"));
-    assert(symmetryError <= 1e-10 * scale, ...
+    assert(all(isfinite(covariance), "all"), ...
+        "%s covariance is non-finite at epoch %d.", methodName, index);
+    variances = diag(covariance);
+    assert(all(variances >= -1e-12 * max(abs(variances), realmin)), ...
+        "%s covariance has a negative variance at epoch %d.", methodName, index);
+    standardDeviations = sqrt(max(variances, realmin));
+    normalizedCovariance = covariance ./ ...
+        (standardDeviations * standardDeviations.');
+    symmetryError = norm(normalizedCovariance - normalizedCovariance.', "fro");
+    assert(symmetryError <= 1e-10, ...
         "%s covariance lost symmetry at epoch %d.", methodName, index);
-    minimumEigenvalue = min(eig(symmetrize(covariance)));
-    assert(minimumEigenvalue >= -1e-10 * scale, ...
+    minimumEigenvalue = min(eig(symmetrize(normalizedCovariance)));
+    assert(minimumEigenvalue >= -1e-10, ...
         "%s covariance is not positive semidefinite at epoch %d.", methodName, index);
 end
 end
@@ -651,6 +740,7 @@ end
 if ~isfolder(folder)
     mkdir(folder);
 end
+set(findall(figureHandle, "Type", "axes"), "Toolbar", []);
 exportgraphics(figureHandle, fullfile(folder, fileName + ".png"), ...
     "Resolution", 300);
 end
